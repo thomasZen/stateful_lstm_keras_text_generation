@@ -23,21 +23,23 @@ from keras.optimizers import RMSprop
 from keras.utils.data_utils import get_file
 from keras.utils import generic_utils
 import numpy as np
+import random
 
 # Beginning of Sequence
 BOS = '$'
-# End Of Sequence
-EOS = "$$$"
+# End Of SEQuence
+EOSEQ = "$$$"
 
 BATCH_SIZE = 128
 
 
 # Generators return EOS to indicate end of generation
-def sentence_generator(path):
-    f = open(path, encoding="utf-8")
-    for line in f:
-        yield line.lower()
-    yield EOS
+def sentence_generator(lines):
+    random.shuffle(lines)
+    for line in lines:
+        if len(line) > 5:
+            yield line.lower()
+    yield EOSEQ
 
 
 def char_pair_generator(sentence):
@@ -45,14 +47,14 @@ def char_pair_generator(sentence):
     for char in sentence:
         yield context_char, char
         context_char = char
-    yield EOS, EOS
+    yield EOSEQ, EOSEQ
 
 
-def get_char_dict(path, max_chars=999999):
+def get_char_dict(lines, max_chars=999999):
     assert (max_chars > 2)
     char_set = set([BOS])
     sentences = 0
-    for line in sentence_generator(path):
+    for line in sentence_generator(lines):
         char_set.update(line)
         sentences += 1
     char_indices = dict((c, i) for i, c in enumerate(char_set))
@@ -61,7 +63,10 @@ def get_char_dict(path, max_chars=999999):
 
 
 path = get_file('nietzsche.txt', origin="https://s3.amazonaws.com/text-datasets/nietzsche.txt")
-char_indices, indices_char, training_sentences = get_char_dict(path)
+text = open(path, encoding="utf-8").read()
+lines = text.split("\n")
+
+char_indices, indices_char, training_sentences = get_char_dict(lines)
 
 print('total chars:', len(char_indices))
 print('total sentences:', training_sentences)
@@ -100,7 +105,7 @@ for iteration in range(1, 60):
     progbar = generic_utils.Progbar(training_sentences)
 
     # TRAINING
-    sentence_gen = sentence_generator(path)
+    sentence_gen = sentence_generator(lines)
 
     char_pair_generators = []
     for i in range(BATCH_SIZE):
@@ -116,10 +121,10 @@ for iteration in range(1, 60):
             context_char, char = next(char_pair_generators[i])
 
             # refill char pair generator
-            if context_char == EOS:
+            if context_char == EOSEQ:
                 sentence = next(sentence_gen)
                 # the iteration finished, no new sentence can be retrieved
-                if sentence == EOS:
+                if sentence == EOSEQ:
                     finished_iteration = True
                     break
                 char_pair_generators[i] = char_pair_generator(sentence)
@@ -129,7 +134,6 @@ for iteration in range(1, 60):
                 if processed_sentences % 100 == 0:
                     progbar.update(processed_sentences, values=[("loss", np.mean(losses))])
                     losses = []
-
             X[i, 0, char_indices[context_char]] = 1
             Y[i, char_indices[char]] = 1
 
